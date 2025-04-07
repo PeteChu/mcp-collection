@@ -43,7 +43,7 @@ func (m *MetalPrice) registerTools() {
 }
 
 func (m *MetalPrice) ListSymbols() (mcp.Tool, ToolHandler) {
-	tool := mcp.NewTool("list symbols",
+	tool := mcp.NewTool("metalprice_list_symbols",
 		mcp.WithDescription("Get list of all supported currencies"),
 	)
 	return tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -80,7 +80,7 @@ func (m *MetalPrice) ListSymbols() (mcp.Tool, ToolHandler) {
 }
 
 func (m *MetalPrice) LiveRates() (mcp.Tool, ToolHandler) {
-	tool := mcp.NewTool("live rates",
+	tool := mcp.NewTool("metalprice_live_rates",
 		mcp.WithDescription("Get real-time exchange rate data for all available/specific currencies"),
 		mcp.WithString(
 			"base",
