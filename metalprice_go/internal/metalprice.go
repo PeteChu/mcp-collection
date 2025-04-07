@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -38,9 +39,20 @@ func NewMetalPriceMcp(server *server.MCPServer, apiKey string) *MetalPrice {
 }
 
 func (m *MetalPrice) registerTools() {
+	m.Server.AddTool(m.Today())
 	m.Server.AddTool(m.ListSymbols())
 	m.Server.AddTool(m.LiveRates())
 	m.Server.AddTool(m.HistoricalRates())
+	m.Server.AddTool(m.TimeframeQuery())
+}
+
+func (m *MetalPrice) Today() (mcp.Tool, ToolHandler) {
+	tool := mcp.NewTool("metalprice_today",
+		mcp.WithDescription("Get today's date"),
+	)
+	return tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return mcp.NewToolResultText("Today is " + time.Now().Format("2006-01-02")), nil
+	}
 }
 
 func (m *MetalPrice) ListSymbols() (mcp.Tool, ToolHandler) {
@@ -119,6 +131,46 @@ func (m *MetalPrice) HistoricalRates() (mcp.Tool, ToolHandler) {
 		delete(request.Params.Arguments, "date")
 
 		url := BASE_URL + fmt.Sprintf("/%s", date)
+		data, err := m.fetch(url)
+		if err != nil {
+			return nil, err
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func (m *MetalPrice) TimeframeQuery() (mcp.Tool, ToolHandler) {
+	tool := mcp.NewTool("metalprice_timeframe_query",
+		mcp.WithDescription("Request exchange rates for a specific period of time"),
+		mcp.WithString(
+			"start_date",
+			mcp.Required(),
+			mcp.Description("Specify a start date in YYYY-MM-DD format. This parameter is required."),
+		),
+		mcp.WithString(
+			"end_date",
+			mcp.Required(),
+			mcp.Description("Specify a start date in YYYY-MM-DD format. This parameter is required."),
+		),
+		mcp.WithString(
+			"base",
+			mcp.Description("Specify a base currency. Base Currency will default to USD if this parameter is not defined."),
+			mcp.DefaultString("usd"),
+		),
+		mcp.WithString(
+			"currencies",
+			mcp.Description("Specify a comma-separated list of currency codes to limit API responses to specified currencies. If this parameter is not defined, the API will return all supported currencies."),
+		),
+		mcp.WithString(
+			"unit",
+			mcp.Description("(Paid plan) Specify troy_oz or gram or kilogram. If not defined, the API will return metals in troy ounce."),
+			mcp.Enum("troy_oz", "gram", "kilogram"),
+			mcp.DefaultString("troy_oz"),
+		),
+	)
+	return tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		query := buildQueryString(request.Params.Arguments)
+		url := BASE_URL + "/timeframe" + query
 		data, err := m.fetch(url)
 		if err != nil {
 			return nil, err
