@@ -15,6 +15,14 @@ type MetalPrice struct {
 	ApiKey string
 }
 
+type BaseApiResponse struct {
+	Success bool `json:"success"`
+	Error   struct {
+		StatusCode int    `json:"statusCode"`
+		Message    string `json:"message"`
+	} `json:"error"`
+}
+
 type ToolHandler = func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
 
 const BASE_URL = "https://api.metalpriceapi.com/v1"
@@ -72,8 +80,11 @@ func (m *MetalPrice) ListSymbols() (mcp.Tool, ToolHandler) {
 }
 
 func handleApiError(response *http.Response) error {
-	if response.StatusCode != http.StatusOK {
-		switch response.StatusCode {
+	var responseBody BaseApiResponse
+	json.NewDecoder(response.Body).Decode(&responseBody)
+	if !responseBody.Success {
+		code := responseBody.Error.StatusCode
+		switch code {
 		case http.StatusNotFound:
 			return fmt.Errorf("API error: User requested a non-existent API function")
 		case 101:
@@ -101,9 +112,9 @@ func handleApiError(response *http.Response) error {
 		case 207:
 			return fmt.Errorf("API error: Timeframe exceeded 365 days [ timeframe ]")
 		case 300:
-			return fmt.Errorf("API error:  	The user's query did not return any results [ latest, historical, convert, timeframe, change ]")
+			return fmt.Errorf("API error: The user's query did not return any results [ latest, historical, convert, timeframe, change ]")
 		default:
-			return fmt.Errorf("API error: %s", response.Status)
+			return fmt.Errorf("API error: %+v", code)
 		}
 	}
 
