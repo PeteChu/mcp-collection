@@ -2,8 +2,8 @@ package metalprice
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -39,17 +39,19 @@ func NewMetalPriceMcp(server *server.MCPServer, apiKey string) *MetalPrice {
 
 func (m *MetalPrice) registerTools() {
 	m.Server.AddTool(m.ListSymbols())
+	m.Server.AddTool(m.LiveRates())
 }
 
 func (m *MetalPrice) ListSymbols() (mcp.Tool, ToolHandler) {
 	tool := mcp.NewTool("list symbols",
-		mcp.WithDescription("List all available symbols"),
+		mcp.WithDescription("Get list of all supported currencies"),
 	)
 	return tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		client := http.Client{}
 
 		req, err := http.NewRequest("GET", BASE_URL+"/symbols", nil)
 		if err != nil {
+			return nil, fmt.Errorf("error creating request: %v", err)
 		}
 
 		req.Header = http.Header{
@@ -59,64 +61,101 @@ func (m *MetalPrice) ListSymbols() (mcp.Tool, ToolHandler) {
 
 		resp, err := client.Do(req)
 		if err != nil {
+			return nil, fmt.Errorf("error making request: %v", err)
 		}
+		defer resp.Body.Close()
 
-		if err := handleApiError(resp); err != nil {
+		b, err := io.ReadAll(resp.Body)
+
+		if err := handleApiError(b); err != nil {
 			return nil, err
 		}
 
-		var data map[string]any
-		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-			return nil, fmt.Errorf("error decoding response: %v", err)
-		}
-
-		prettyJson, err := json.MarshalIndent(data, "", "  ")
 		if err != nil {
-			return nil, fmt.Errorf("error formatting response: %v", err)
+			return nil, fmt.Errorf("error reading response: %v", err)
 		}
 
-		return mcp.NewToolResultText(string(prettyJson)), nil
+		return mcp.NewToolResultText(string(b)), nil
 	}
 }
 
-func handleApiError(response *http.Response) error {
-	var responseBody BaseApiResponse
-	json.NewDecoder(response.Body).Decode(&responseBody)
-	if !responseBody.Success {
-		code := responseBody.Error.StatusCode
-		switch code {
-		case http.StatusNotFound:
-			return fmt.Errorf("API error: User requested a non-existent API function")
-		case 101:
-			return fmt.Errorf("API error: User did not supply an API Key")
-		case 102:
-			return fmt.Errorf("API error: User did not supply an access key or supplied an invalid access key")
-		case 103:
-			return fmt.Errorf("API error: The user's account is not active. User will be prompted to get in touch with Customer Support")
-		case 104:
-			return fmt.Errorf("API error: Too Many Requests")
-		case 105:
-			return fmt.Errorf("API error: User has reached or exceeded his subscription plan's monthly API request allowance")
-		case 201:
-			return fmt.Errorf("API error: User entered an invalid Base Currency [ latest, historical, timeframe, change ]")
-		case 202:
-			return fmt.Errorf("API error: User entered an invalid from Currency [ convert ]")
-		case 203:
-			return fmt.Errorf("API error: User entered invalid to currency [ convert ]")
-		case 204:
-			return fmt.Errorf("API error: User entered invalid amount [ convert ]")
-		case 205:
-			return fmt.Errorf("API error: User entered invalid date [ historical, convert, timeframe, change ]")
-		case 206:
-			return fmt.Errorf("API error: Invalid timeframe [ timeframe, change ]")
-		case 207:
-			return fmt.Errorf("API error: Timeframe exceeded 365 days [ timeframe ]")
-		case 300:
-			return fmt.Errorf("API error: The user's query did not return any results [ latest, historical, convert, timeframe, change ]")
-		default:
-			return fmt.Errorf("API error: %+v", code)
-		}
-	}
+func (m *MetalPrice) LiveRates() (mcp.Tool, ToolHandler) {
+	tool := mcp.NewTool("live rates",
+		mcp.WithDescription("Get real-time exchange rate data for all available/specific currencies"),
+		mcp.WithString(
+			"base",
+			mcp.Description("Specify a base currency. Base Currency will default to USD if this parameter is not defined."),
+			mcp.DefaultString("usd"),
+		),
+		mcp.WithString(
+			"currencies",
+			mcp.Description("Specify a comma-separated list of currency codes to limit API responses to specified currencies. If this parameter is not defined, the API will return all supported currencies."),
+		),
+		mcp.WithString(
+			"unit",
+			mcp.Description("(Paid plan) Specify troy_oz or gram or kilogram. If not defined, the API will return metals in troy ounce."),
+			mcp.Enum("troy_oz", "gram", "kilogram"),
+			mcp.DefaultString("troy_oz"),
+		),
+		mcp.WithString("math",
+			mcp.Description("Specify math operators to perform on the result. Use value to refer to the rates. Specify one or more of the mathematical operators add, subtract, multiply, and/or divide."),
+		),
+	)
+	return tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		params := make([]string, 0)
+		params = append(params, fmt.Sprintf("api_key=%s", m.ApiKey))
 
-	return nil
+		if base, ok := request.Params.Arguments["base"]; ok {
+			params = append(params, fmt.Sprintf("base=%s", base.(string)))
+		}
+		if currencies, ok := request.Params.Arguments["currencies"]; ok {
+			params = append(params, fmt.Sprintf("currencies=%s", currencies.(string)))
+		}
+		if unit, ok := request.Params.Arguments["unit"]; ok {
+			params = append(params, fmt.Sprintf("unit=%s", unit.(string)))
+		}
+		if math, ok := request.Params.Arguments["math"]; ok {
+			params = append(params, fmt.Sprintf("math=%s", math.(string)))
+		}
+
+		query := ""
+		for i, val := range params {
+			if i == 0 {
+				query += "?" + val
+			} else {
+				query += "&" + val
+			}
+		}
+
+		url := BASE_URL + "/latest" + query
+
+		client := http.Client{}
+
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("error creating request: %v", err)
+		}
+
+		req.Header = http.Header{
+			"Content-Type": {"application/json"},
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("error making request: %v", err)
+		}
+		defer resp.Body.Close()
+
+		b, err := io.ReadAll(resp.Body)
+
+		if err := handleApiError(b); err != nil {
+			return nil, err
+		}
+
+		if err != nil {
+			return nil, fmt.Errorf("error reading response: %v", err)
+		}
+
+		return mcp.NewToolResultText(string(b)), nil
+	}
 }
