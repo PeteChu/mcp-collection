@@ -47,35 +47,12 @@ func (m *MetalPrice) ListSymbols() (mcp.Tool, ToolHandler) {
 		mcp.WithDescription("Get list of all supported currencies"),
 	)
 	return tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		client := http.Client{}
-
-		req, err := http.NewRequest("GET", BASE_URL+"/symbols", nil)
+		url := BASE_URL + "/symbols"
+		data, err := m.fetch(url)
 		if err != nil {
-			return nil, fmt.Errorf("error creating request: %v", err)
-		}
-
-		req.Header = http.Header{
-			"X-API-KEY":    {m.ApiKey},
-			"Content-Type": {"application/json"},
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("error making request: %v", err)
-		}
-		defer resp.Body.Close()
-
-		b, err := io.ReadAll(resp.Body)
-
-		if err := handleApiError(b); err != nil {
 			return nil, err
 		}
-
-		if err != nil {
-			return nil, fmt.Errorf("error reading response: %v", err)
-		}
-
-		return mcp.NewToolResultText(string(b)), nil
+		return mcp.NewToolResultText(string(data)), nil
 	}
 }
 
@@ -102,60 +79,53 @@ func (m *MetalPrice) LiveRates() (mcp.Tool, ToolHandler) {
 		),
 	)
 	return tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		params := make([]string, 0)
-		params = append(params, fmt.Sprintf("api_key=%s", m.ApiKey))
-
-		if base, ok := request.Params.Arguments["base"]; ok {
-			params = append(params, fmt.Sprintf("base=%s", base.(string)))
-		}
-		if currencies, ok := request.Params.Arguments["currencies"]; ok {
-			params = append(params, fmt.Sprintf("currencies=%s", currencies.(string)))
-		}
-		if unit, ok := request.Params.Arguments["unit"]; ok {
-			params = append(params, fmt.Sprintf("unit=%s", unit.(string)))
-		}
-		if math, ok := request.Params.Arguments["math"]; ok {
-			params = append(params, fmt.Sprintf("math=%s", math.(string)))
-		}
-
-		query := ""
-		for i, val := range params {
-			if i == 0 {
-				query += "?" + val
-			} else {
-				query += "&" + val
-			}
-		}
-
+		query := buildQueryString(request.Params.Arguments)
 		url := BASE_URL + "/latest" + query
-
-		client := http.Client{}
-
-		req, err := http.NewRequest("GET", url, nil)
+		data, err := m.fetch(url)
 		if err != nil {
-			return nil, fmt.Errorf("error creating request: %v", err)
-		}
-
-		req.Header = http.Header{
-			"Content-Type": {"application/json"},
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("error making request: %v", err)
-		}
-		defer resp.Body.Close()
-
-		b, err := io.ReadAll(resp.Body)
-
-		if err := handleApiError(b); err != nil {
 			return nil, err
 		}
-
-		if err != nil {
-			return nil, fmt.Errorf("error reading response: %v", err)
-		}
-
-		return mcp.NewToolResultText(string(b)), nil
+		return mcp.NewToolResultText(string(data)), nil
 	}
+}
+
+func (m *MetalPrice) fetch(url string) ([]byte, error) {
+	client := http.Client{}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	req.Header = http.Header{
+		"X-API-KEY":    {m.ApiKey},
+		"Content-Type": {"application/json"},
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error making request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading response: %v", err)
+	}
+
+	if err := handleApiError(b); err != nil {
+		return nil, err
+	}
+	return b, err
+}
+
+func buildQueryString(args map[string]any) string {
+	query := ""
+	if len(args) > 0 {
+		query += "?"
+	}
+	for key, value := range args {
+		query += fmt.Sprintf("%s=%s&", key, value.(string))
+	}
+	return query
 }
