@@ -1,16 +1,14 @@
 package main
 
 import (
-	"fmt"
 	"log"
+	"os"
 
 	"github.com/mark3labs/mcp-go/server"
 	metalprice "github.com/petechu/metalprice-mcp/internal"
 )
 
 func main() {
-	fmt.Println("Starting MCP server...")
-
 	s := server.NewMCPServer(
 		"Metal Price MCP",
 		"0.0.1",
@@ -18,7 +16,12 @@ func main() {
 		server.WithLogging(),
 	)
 
-	mcp := metalprice.NewMetalPriceMcp(s, "")
+	apiKey := os.Getenv("METALPRICE_API_KEY")
+	if apiKey == "" {
+		log.Fatal("METALPRICE_API_KEY environment variable is not set")
+	}
+
+	mcp := metalprice.NewMetalPriceMcp(s, apiKey)
 
 	if err := server.ServeStdio(mcp.Server); err != nil {
 		log.Fatalf("Error starting MCP server: %v\n", err)
