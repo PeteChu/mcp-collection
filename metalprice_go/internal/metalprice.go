@@ -44,6 +44,7 @@ func (m *MetalPrice) registerTools() {
 	m.Server.AddTool(m.LiveRates())
 	m.Server.AddTool(m.HistoricalRates())
 	m.Server.AddTool(m.TimeframeQuery())
+	m.Server.AddTool(m.OHLC())
 }
 
 func (m *MetalPrice) Today() (mcp.Tool, ToolHandler) {
@@ -171,6 +172,36 @@ func (m *MetalPrice) TimeframeQuery() (mcp.Tool, ToolHandler) {
 	return tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		query := buildQueryString(request.Params.Arguments)
 		url := BASE_URL + "/timeframe" + query
+		data, err := m.fetch(url)
+		if err != nil {
+			return nil, err
+		}
+		return mcp.NewToolResultText(string(data)), nil
+	}
+}
+
+func (m *MetalPrice) OHLC() (mcp.Tool, ToolHandler) {
+	tool := mcp.NewTool("metalprice_ohlc",
+		mcp.WithDescription("Get OHLC (Open, High, Low, Close) data for a specific metal and date"),
+		mcp.WithString(
+			"base",
+			mcp.Required(),
+			mcp.Description("Specify a base metal code (e.g., XAU for gold, XAG for silver)"),
+		),
+		mcp.WithString(
+			"currency",
+			mcp.Required(),
+			mcp.Description("Specify the currency to get prices in (e.g., USD, EUR, GBP)"),
+		),
+		mcp.WithString(
+			"date",
+			mcp.Description("Specify a date in YYYY-MM-DD format. If this parameter is not defined, the API will use today's date."),
+			mcp.DefaultString(time.Now().Format("2006-01-02")),
+		),
+	)
+	return tool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		query := buildQueryString(request.Params.Arguments)
+		url := BASE_URL + "/ohlc" + query
 		data, err := m.fetch(url)
 		if err != nil {
 			return nil, err
