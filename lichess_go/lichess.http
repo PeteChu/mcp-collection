@@ -1,0 +1,7 @@
+@token=
+@gameId=
+
+### Stream game moves
+GET https://lichess.org/api/board/game/stream/{{gameId}}
+Authorization: Bearer {{token}}
+Content-Type: application/x-ndjson
