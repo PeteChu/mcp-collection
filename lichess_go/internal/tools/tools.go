@@ -12,18 +12,19 @@ type (
 	MCPHandler = func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
 )
 
-type LichessTools struct {
+type MCPTools struct {
 	Server *server.MCPServer
 	API    *lichess.Lichess
 }
 
-func NewLichessTools(server *server.MCPServer, api *lichess.Lichess) *LichessTools {
-	return &LichessTools{
+func NewLichessTools(server *server.MCPServer, api *lichess.Lichess) *MCPTools {
+	return &MCPTools{
 		Server: server,
 		API:    api,
 	}
 }
 
-func (t *LichessTools) RegisterTools() {
+func (t *MCPTools) RegisterTools() {
 	t.Server.AddTool(t.BoardStatus())
+	t.Server.AddTool(t.BoardMove())
 }

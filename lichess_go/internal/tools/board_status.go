@@ -6,7 +6,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-func (l *LichessTools) BoardStatus() (mcp.Tool, MCPHandler) {
+func (l *MCPTools) BoardStatus() (mcp.Tool, MCPHandler) {
 	tool := mcp.NewTool("board_status",
 		mcp.WithDescription("get the status of a game by gameId"),
 		mcp.WithString(
